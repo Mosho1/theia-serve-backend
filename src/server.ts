@@ -17,7 +17,7 @@ class TSCompiler {
 
         if (ts.isImportDeclaration(node)) {
             const specifier = node.moduleSpecifier;
-            if (ts.isStringLiteral(specifier)) {
+            if (ts.isStringLiteral(specifier) && !specifier.text.startsWith('.')) {
                 const newSpecifier = `${this.cdn}/${specifier.text}`;
                 return ts.createImportDeclaration(
                     node.decorators,
