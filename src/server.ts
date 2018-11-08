@@ -9,6 +9,7 @@ import { join } from 'path';
 import { TransformerFactory, SourceFile } from 'typescript';
 
 const readFileAsync = promisify(fs.readFile);
+const statAsync = promisify(fs.stat);
 
 class TSCompiler {
     cdn = `https://dev.jspm.io`;
@@ -43,9 +44,16 @@ class TSCompiler {
         }
     }
 
+    cache: { [index: string]: { compileTime: Date, content: string } } = {};
+
     async compile(path: string) {
+        const stat = await statAsync(path);
+        if (this.cache[path] && this.cache[path].compileTime > stat.mtime) {
+            return this.cache[path].content;
+        }
         const file = await readFileAsync(path);
         const compiled = ts.transpileModule(file.toString(), this.options);
+        this.cache[path] = { compileTime: new Date(), content: compiled.outputText };
         return compiled.outputText;
     }
 }
@@ -64,12 +72,12 @@ export class StaticServer {
         }
     }
 
-
     async start(path: string) {
         await this.stop();
         const app = express();
         app.use('**/*.ts', async (req, res, next) => {
-            const compiled = await this.tsCompiler.compile(join(path, req.originalUrl));
+            const filePath = join(path, req.originalUrl);
+            const compiled = await this.tsCompiler.compile(filePath);
             res.writeHead(200, { "Content-Type": "application/javascript" })
             res.end(compiled);
         });
