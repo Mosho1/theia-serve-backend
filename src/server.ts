@@ -65,6 +65,9 @@ class TSCompiler {
     cdn = `https://dev.jspm.io`;
     cache = new Cache();
     prefix = '__';
+    getImportName(name:string) {
+        return this.prefix + name.replace(/-/g, '_');
+    }
     replaceImportWithCdn = (node: ts.Node) => {
         if (ts.isImportDeclaration(node)) {
             const specifier = node.moduleSpecifier;
@@ -73,7 +76,7 @@ class TSCompiler {
                 if (node.importClause &&
                     node.importClause.namedBindings) {
                     if (ts.isNamedImports(node.importClause.namedBindings)) {
-                        const importName = this.prefix + specifier.text;
+                        const importName = this.getImportName(specifier.text);
                         const tempIdentifier = ts.createIdentifier(this.prefix + importName);
                         const importClause = ts.createImportClause(
                             undefined,
@@ -105,7 +108,7 @@ class TSCompiler {
                             ts.createVariableDeclarationList([
                                 ts.createVariableDeclaration(
                                     ts.createObjectBindingPattern(node.importClause.namedBindings.elements.map(el =>
-                                        ts.createBindingElement(undefined, undefined, el.name))),
+                                        ts.createBindingElement(undefined, el.propertyName, el.name))),
                                     undefined,
                                     ts.createIdentifier(importName)
                                 )
@@ -120,7 +123,7 @@ class TSCompiler {
                     }
                     if (ts.isNamespaceImport(node.importClause.namedBindings)) {
                         const importName = node.importClause.namedBindings.name.escapedText.toString();
-                        const tempIdentifier = ts.createIdentifier(this.prefix + importName);
+                        const tempIdentifier = ts.createIdentifier(this.getImportName(specifier.text));
                         const importClause = ts.createImportClause(
                             undefined,
                             ts.createNamespaceImport(tempIdentifier));
