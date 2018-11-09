@@ -66,7 +66,7 @@ class TSCompiler {
     cache = new Cache();
     prefix = '__';
     getImportName(name:string) {
-        return this.prefix + name.replace(/-/g, '_');
+        return this.prefix + name.replace(/[^a-z0-9]/ig, '_');
     }
     replaceImportWithCdn = (node: ts.Node) => {
         if (ts.isImportDeclaration(node)) {
