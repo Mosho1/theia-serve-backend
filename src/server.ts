@@ -9,9 +9,61 @@ import * as d from 'debug';
 import { Request, Response } from 'express';
 const debug = d('ts-server');
 
+class Cache {
+    cacheDir = './cache';
+
+    constructor() {
+        this.makeCacheDir();
+    }
+
+    async makeCacheDir() {
+        try {
+            await fs.mkdir(this.cacheDir);
+        } catch (e) {
+            if (e.code !== 'EEXIST') throw e;
+        }
+    }
+    async stat(path: string) {
+        try {
+            return await fs.stat(path);
+        } catch {
+            const message = `could not find ${path}`;
+            const error = new Error(message);
+            (error as any).status = 404;
+            throw error;
+        }
+    }
+
+    cachePath(path: string) {
+        return join(this.cacheDir, path.replace(/\//g, '__'));
+    }
+
+    async read(path: string) {
+        try {
+            const stat = await this.stat(path);
+            const cachePath = this.cachePath(path);
+            const cacheStat = await fs.stat(cachePath);
+            if (cacheStat.mtime > stat.mtime) {
+                debug(`found cached version of ${path}`)
+                return await fs.readFile(cachePath);
+            }
+        } catch (e) {
+            debug(e);
+        }
+        debug(`couldn't found cached version of ${path}`)
+        return null;
+    }
+
+    async write(path: string, data: string) {
+        const cachePath = this.cachePath(path);
+        await fs.writeFile(cachePath, data);
+        debug(`wrote to cache: ${cachePath}`)
+    }
+}
+
 class TSCompiler {
     cdn = `https://dev.jspm.io`;
-    cacheDir = './cache';
+    cache = new Cache();
 
     replaceImportWithCdn = (node: ts.Node) => {
         if (ts.isImportDeclaration(node)) {
@@ -43,63 +95,12 @@ class TSCompiler {
         }
     }
 
-
-    constructor() {
-        this.makeCacheDir();
-    }
-
-
-    async makeCacheDir() {
-        try {
-            await fs.mkdir(this.cacheDir);
-        } catch (e) {
-            if (e.code !== 'EEXIST') throw e;
-        }
-    }
-
-    async stat(path: string) {
-        try {
-            return await fs.stat(path);
-        } catch {
-            const message = `could not find ${path}`;
-            const error = new Error(message);
-            (error as any).status = 404;
-            throw error;
-        }
-    }
-
-    cachePath(path: string) {
-        return join(this.cacheDir, path.replace(/\//g, '__'));
-    }
-
-    async readCache(path: string) {
-        try {
-            const stat = await this.stat(path);
-            const cachePath = this.cachePath(path);
-            const cacheStat = await fs.stat(cachePath);
-            if (cacheStat.mtime > stat.mtime) {
-                debug(`found cached version of ${path}`)
-                return await fs.readFile(cachePath);
-            }
-        } catch (e) {
-            debug(e);
-        }
-        debug(`couldn't found cached version of ${path}`)
-        return null;
-    }
-
-    async writeCache(path: string, data: string) {
-        const cachePath = this.cachePath(path);
-        await fs.writeFile(cachePath, data);
-        debug(`wrote to cache: ${cachePath}`)
-    }
-
     async compile(path: string) {
-        const cached = await this.readCache(path);
+        const cached = await this.cache.read(path);
         if (cached) return cached;
         const file = await fs.readFile(path);
         const { outputText } = ts.transpileModule(file.toString(), this.options);
-        await this.writeCache(path, outputText)
+        await this.cache.write(path, outputText)
         return outputText;
     }
 }
