@@ -2,23 +2,18 @@ import * as serveStatic from 'serve-static';
 import * as http from 'http';
 import * as express from 'express';
 import * as ts from 'typescript';
-import * as fs from 'fs';
-import { promisify } from 'util';
+import * as fs from 'fs-extra';
 import { join, resolve } from 'path';
 import { TransformerFactory, SourceFile } from 'typescript';
-
-const readFileAsync = promisify(fs.readFile);
-const writeFileAsync = promisify(fs.writeFile);
-const statAsync = promisify(fs.stat);
-const existsAsync = promisify(fs.exists);
-const mkdirAsync = promisify(fs.mkdir);
+import * as d from 'debug';
+import { Request, Response } from 'express';
+const debug = d('ts-server');
 
 class TSCompiler {
     cdn = `https://dev.jspm.io`;
     cacheDir = './cache';
 
     replaceImportWithCdn = (node: ts.Node) => {
-
         if (ts.isImportDeclaration(node)) {
             const specifier = node.moduleSpecifier;
             if (ts.isStringLiteral(specifier) && !specifier.text.startsWith('.')) {
@@ -34,9 +29,10 @@ class TSCompiler {
         return node;
     }
 
-    transformImports: TransformerFactory<SourceFile> = (context) => (node) => {
+    transformImports: TransformerFactory<SourceFile> = (context: any) => (node: any) => {
         return ts.visitEachChild(node, this.replaceImportWithCdn, context);
     };
+
     options: ts.TranspileOptions = {
         compilerOptions: {
             module: 5,
@@ -52,28 +48,59 @@ class TSCompiler {
         this.makeCacheDir();
     }
 
-    
+
     async makeCacheDir() {
-        if (!(await existsAsync(this.cacheDir))) {
-            await mkdirAsync(this.cacheDir);
+        try {
+            await fs.mkdir(this.cacheDir);
+        } catch (e) {
+            if (e.code !== 'EEXIST') throw e;
         }
     }
 
-    async compile(path: string) {
-        const stat = await statAsync(path);
-        const cachePath = join(this.cacheDir, path.replace(/\//g, '__'));
+    async stat(path: string) {
         try {
-            const cacheStat = await statAsync(cachePath);
-            if (cacheStat.mtime < stat.mtime) {
-                return await readFileAsync(cachePath);
-            }
-        } catch(e) {
-            
+            return await fs.stat(path);
+        } catch {
+            const message = `could not find ${path}`;
+            const error = new Error(message);
+            (error as any).status = 404;
+            throw error;
         }
-        const file = await readFileAsync(path);
-        const compiled = ts.transpileModule(file.toString(), this.options);
-        await writeFileAsync(cachePath, compiled.outputText);
-        return compiled.outputText;
+    }
+
+    cachePath(path: string) {
+        return join(this.cacheDir, path.replace(/\//g, '__'));
+    }
+
+    async readCache(path: string) {
+        try {
+            const stat = await this.stat(path);
+            const cachePath = this.cachePath(path);
+            const cacheStat = await fs.stat(cachePath);
+            if (cacheStat.mtime > stat.mtime) {
+                debug(`found cached version of ${path}`)
+                return await fs.readFile(cachePath);
+            }
+        } catch (e) {
+            debug(e);
+        }
+        debug(`couldn't found cached version of ${path}`)
+        return null;
+    }
+
+    async writeCache(path: string, data: string) {
+        const cachePath = this.cachePath(path);
+        await fs.writeFile(cachePath, data);
+        debug(`wrote to cache: ${cachePath}`)
+    }
+
+    async compile(path: string) {
+        const cached = await this.readCache(path);
+        if (cached) return cached;
+        const file = await fs.readFile(path);
+        const { outputText } = ts.transpileModule(file.toString(), this.options);
+        await this.writeCache(path, outputText)
+        return outputText;
     }
 }
 
@@ -89,18 +116,33 @@ export class StaticServer {
         res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3030');
     }
 
-    async start(path: string) {
-        path = resolve(path);
-        await this.stop();
-        const app = express();
-        app.use('**/*.ts', async (req, res, next) => {
+    errorHandler(error: Error, req: Request, res: Response, next: (e?: Error) => void) {
+        debug(error);
+        next(error);
+    }
+
+    serveTsFiles = (path: string) => async (req: Request, res: Response, next: (e?: Error) => void) => {
+        try {
             const filePath = join(path, req.originalUrl);
             const compiled = await this.tsCompiler.compile(filePath);
             this.setHeaders(res);
             res.writeHead(200, { "Content-Type": "application/javascript" });
             res.end(compiled);
-        });
-        app.use(serveStatic(path, {setHeaders: this.setHeaders}));
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async start(path: string) {
+        await this.stop();
+
+        const app = express();
+
+        path = resolve(path);
+        app.use('**/*.ts', this.serveTsFiles(path));
+        app.use(serveStatic(path, { setHeaders: this.setHeaders }));
+        app.use(this.errorHandler);
+
         this.server = app.listen(this.options.port);
     }
 
