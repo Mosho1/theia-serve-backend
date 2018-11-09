@@ -1,18 +1,21 @@
 import * as serveStatic from 'serve-static';
 import * as http from 'http';
-import * as finalhandler from 'finalhandler';
 import * as express from 'express';
 import * as ts from 'typescript';
 import * as fs from 'fs';
 import { promisify } from 'util';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import { TransformerFactory, SourceFile } from 'typescript';
 
 const readFileAsync = promisify(fs.readFile);
+const writeFileAsync = promisify(fs.writeFile);
 const statAsync = promisify(fs.stat);
+const existsAsync = promisify(fs.exists);
+const mkdirAsync = promisify(fs.mkdir);
 
 class TSCompiler {
     cdn = `https://dev.jspm.io`;
+    cacheDir = './cache';
 
     replaceImportWithCdn = (node: ts.Node) => {
 
@@ -44,16 +47,32 @@ class TSCompiler {
         }
     }
 
-    cache: { [index: string]: { compileTime: Date, content: string } } = {};
+
+    constructor() {
+        this.makeCacheDir();
+    }
+
+    
+    async makeCacheDir() {
+        if (!(await existsAsync(this.cacheDir))) {
+            await mkdirAsync(this.cacheDir);
+        }
+    }
 
     async compile(path: string) {
         const stat = await statAsync(path);
-        if (this.cache[path] && this.cache[path].compileTime > stat.mtime) {
-            return this.cache[path].content;
+        const cachePath = join(this.cacheDir, path.replace(/\//g, '__'));
+        try {
+            const cacheStat = await statAsync(cachePath);
+            if (cacheStat.mtime < stat.mtime) {
+                return await readFileAsync(cachePath);
+            }
+        } catch(e) {
+            
         }
         const file = await readFileAsync(path);
         const compiled = ts.transpileModule(file.toString(), this.options);
-        this.cache[path] = { compileTime: new Date(), content: compiled.outputText };
+        await writeFileAsync(cachePath, compiled.outputText);
         return compiled.outputText;
     }
 }
@@ -66,23 +85,23 @@ export class StaticServer {
 
     tsCompiler = new TSCompiler();
 
-    serveOptions: serveStatic.ServeStaticOptions = {
-        setHeaders(res, path) {
-            res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3030');
-        }
+    setHeaders(res: express.Response, path?: string) {
+        res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3030');
     }
 
     async start(path: string) {
+        path = resolve(path);
         await this.stop();
         const app = express();
         app.use('**/*.ts', async (req, res, next) => {
             const filePath = join(path, req.originalUrl);
             const compiled = await this.tsCompiler.compile(filePath);
-            res.writeHead(200, { "Content-Type": "application/javascript" })
+            this.setHeaders(res);
+            res.writeHead(200, { "Content-Type": "application/javascript" });
             res.end(compiled);
         });
-        app.use(serveStatic(path, this.serveOptions));
-        app.listen(this.options.port);
+        app.use(serveStatic(path, {setHeaders: this.setHeaders}));
+        this.server = app.listen(this.options.port);
     }
 
     stop() {
@@ -92,5 +111,3 @@ export class StaticServer {
         });
     }
 }
-
-new StaticServer({ port: 4000 }).start('./');
