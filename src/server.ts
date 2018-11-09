@@ -70,18 +70,58 @@ class TSCompiler {
             const specifier = node.moduleSpecifier;
             if (ts.isStringLiteral(specifier) && !specifier.text.startsWith('.')) {
                 const newSpecifier = `${this.cdn}/${specifier.text}`;
-                return ts.createImportDeclaration(
-                    node.decorators,
-                    node.modifiers,
-                    node.importClause,
-                    ts.createStringLiteral(newSpecifier)
-                )
+                if (node.importClause &&
+                    node.importClause.namedBindings &&
+                    ts.isNamespaceImport(node.importClause.namedBindings)) {
+
+                    const importName = node.importClause.namedBindings.name.escapedText;
+                    const tempIdentifier = ts.createIdentifier('_' + importName);
+                    const importClause = ts.createImportClause(
+                        undefined,
+                        ts.createNamespaceImport(tempIdentifier));
+
+                    const newImportDeclaration = ts.createImportDeclaration(
+                        node.decorators,
+                        node.modifiers,
+                        importClause,
+                        ts.createStringLiteral(newSpecifier)
+                    );
+
+                    const pickTheRightExport = ts.createVariableStatement(
+                        undefined,
+                        ts.createVariableDeclarationList([
+                            ts.createVariableDeclaration(
+                                importName,
+                                undefined,
+                                ts.createBinary(
+                                    ts.createPropertyAccess(tempIdentifier, 'default'),
+                                    ts.SyntaxKind.BarBarToken,
+                                    tempIdentifier
+                                )
+                            )
+                        ])
+                    );
+
+                    return [
+                        newImportDeclaration,
+                        pickTheRightExport
+                    ];
+
+                } else {
+                    return ts.createImportDeclaration(
+                        node.decorators,
+                        node.modifiers,
+                        node.importClause,
+                        ts.createStringLiteral(newSpecifier)
+                    )
+                }
+
             }
         }
         return node;
     }
 
-    transformImports: TransformerFactory<SourceFile> = (context: any) => (node: any) => {
+    transformImports: TransformerFactory<SourceFile> = (context) => (node) => {
         return ts.visitEachChild(node, this.replaceImportWithCdn, context);
     };
 
@@ -95,12 +135,16 @@ class TSCompiler {
         }
     }
 
-    async compile(path: string) {
-        const cached = await this.cache.read(path);
-        if (cached) return cached;
+    async compile(path: string, { nocache = false } = {}) {
+        if (!nocache) {
+            const cached = await this.cache.read(path);
+            if (cached) return cached;
+        } else {
+            debug('skipping cache');
+        }
         const file = await fs.readFile(path);
         const { outputText } = ts.transpileModule(file.toString(), this.options);
-        await this.cache.write(path, outputText)
+        if (!nocache) await this.cache.write(path, outputText)
         return outputText;
     }
 }
@@ -124,8 +168,8 @@ export class StaticServer {
 
     serveTsFiles = (path: string) => async (req: Request, res: Response, next: (e?: Error) => void) => {
         try {
-            const filePath = join(path, req.originalUrl);
-            const compiled = await this.tsCompiler.compile(filePath);
+            const filePath = join(path, req.originalUrl.split('?')[0]);
+            const compiled = await this.tsCompiler.compile(filePath, req.query);
             this.setHeaders(res);
             res.writeHead(200, { "Content-Type": "application/javascript" });
             res.end(compiled);
