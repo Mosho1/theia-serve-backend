@@ -64,49 +64,94 @@ class Cache {
 class TSCompiler {
     cdn = `https://dev.jspm.io`;
     cache = new Cache();
-
+    prefix = '__';
     replaceImportWithCdn = (node: ts.Node) => {
         if (ts.isImportDeclaration(node)) {
             const specifier = node.moduleSpecifier;
             if (ts.isStringLiteral(specifier) && !specifier.text.startsWith('.')) {
                 const newSpecifier = `${this.cdn}/${specifier.text}`;
                 if (node.importClause &&
-                    node.importClause.namedBindings &&
-                    ts.isNamespaceImport(node.importClause.namedBindings)) {
+                    node.importClause.namedBindings) {
+                    if (ts.isNamedImports(node.importClause.namedBindings)) {
+                        const importName = this.prefix + specifier.text;
+                        const tempIdentifier = ts.createIdentifier(this.prefix + importName);
+                        const importClause = ts.createImportClause(
+                            undefined,
+                            ts.createNamespaceImport(tempIdentifier));
 
-                    const importName = node.importClause.namedBindings.name.escapedText;
-                    const tempIdentifier = ts.createIdentifier('_' + importName);
-                    const importClause = ts.createImportClause(
-                        undefined,
-                        ts.createNamespaceImport(tempIdentifier));
+                        const newImportDeclaration = ts.createImportDeclaration(
+                            node.decorators,
+                            node.modifiers,
+                            importClause,
+                            ts.createStringLiteral(newSpecifier));
 
-                    const newImportDeclaration = ts.createImportDeclaration(
-                        node.decorators,
-                        node.modifiers,
-                        importClause,
-                        ts.createStringLiteral(newSpecifier)
-                    );
-
-                    const pickTheRightExport = ts.createVariableStatement(
-                        undefined,
-                        ts.createVariableDeclarationList([
-                            ts.createVariableDeclaration(
-                                importName,
-                                undefined,
-                                ts.createBinary(
-                                    ts.createPropertyAccess(tempIdentifier, 'default'),
-                                    ts.SyntaxKind.BarBarToken,
-                                    tempIdentifier
+                        const pickTheRightExport = ts.createVariableStatement(
+                            undefined,
+                            ts.createVariableDeclarationList([
+                                ts.createVariableDeclaration(
+                                    ts.createIdentifier(importName),
+                                    undefined,
+                                    ts.createBinary(
+                                        ts.createPropertyAccess(tempIdentifier, 'default'),
+                                        ts.SyntaxKind.BarBarToken,
+                                        tempIdentifier
+                                    )
                                 )
-                            )
-                        ])
-                    );
+                            ])
+                        );
 
-                    return [
-                        newImportDeclaration,
-                        pickTheRightExport
-                    ];
+                        const namedImports = ts.createVariableStatement(
+                            undefined,
+                            ts.createVariableDeclarationList([
+                                ts.createVariableDeclaration(
+                                    ts.createObjectBindingPattern(node.importClause.namedBindings.elements.map(el =>
+                                        ts.createBindingElement(undefined, undefined, el.name))),
+                                    undefined,
+                                    ts.createIdentifier(importName)
+                                )
+                            ])
+                        );
 
+                        return [
+                            newImportDeclaration,
+                            pickTheRightExport,
+                            namedImports
+                        ];
+                    }
+                    if (ts.isNamespaceImport(node.importClause.namedBindings)) {
+                        const importName = node.importClause.namedBindings.name.escapedText.toString();
+                        const tempIdentifier = ts.createIdentifier(this.prefix + importName);
+                        const importClause = ts.createImportClause(
+                            undefined,
+                            ts.createNamespaceImport(tempIdentifier));
+
+                        const newImportDeclaration = ts.createImportDeclaration(
+                            node.decorators,
+                            node.modifiers,
+                            importClause,
+                            ts.createStringLiteral(newSpecifier)
+                        );
+
+                        const pickTheRightExport = ts.createVariableStatement(
+                            undefined,
+                            ts.createVariableDeclarationList([
+                                ts.createVariableDeclaration(
+                                    ts.createIdentifier(importName),
+                                    undefined,
+                                    ts.createBinary(
+                                        ts.createPropertyAccess(tempIdentifier, 'default'),
+                                        ts.SyntaxKind.BarBarToken,
+                                        tempIdentifier
+                                    )
+                                )
+                            ])
+                        );
+
+                        return [
+                            newImportDeclaration,
+                            pickTheRightExport
+                        ];
+                    }
                 } else {
                     return ts.createImportDeclaration(
                         node.decorators,
@@ -115,7 +160,6 @@ class TSCompiler {
                         ts.createStringLiteral(newSpecifier)
                     )
                 }
-
             }
         }
         return node;
@@ -144,7 +188,7 @@ class TSCompiler {
         }
         const file = await fs.readFile(path);
         const { outputText } = ts.transpileModule(file.toString(), this.options);
-        if (!nocache) await this.cache.write(path, outputText)
+        await this.cache.write(path, outputText);
         return outputText;
     }
 }
