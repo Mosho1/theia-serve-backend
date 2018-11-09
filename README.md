@@ -1,2 +1,3 @@
-# theia-serve-plugin
-theia-serve-plugin Plugin example for Theia.
+#### TODOS
+
+1. Add cache busting command
