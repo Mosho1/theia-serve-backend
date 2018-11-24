@@ -65,7 +65,7 @@ class TSCompiler {
     cdn = `https://dev.jspm.io`;
     cache = new Cache();
     prefix = '__';
-    getImportName(name:string) {
+    getImportName(name: string) {
         return this.prefix + name.replace(/[^a-z0-9]/ig, '_');
     }
     replaceImportWithCdn = (node: ts.Node) => {
