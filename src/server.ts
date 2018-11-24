@@ -205,7 +205,7 @@ export class StaticServer {
     tsCompiler = new TSCompiler();
 
     setHeaders(res: express.Response, path?: string) {
-        res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3030');
+        res.setHeader('Access-Control-Allow-Origin', '*');
     }
 
     errorHandler(error: Error, req: Request, res: Response, next: (e?: Error) => void) {
