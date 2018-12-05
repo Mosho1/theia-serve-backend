@@ -213,9 +213,9 @@ export class StaticServer {
         next(error);
     }
 
-    serveTsFiles = (path: string) => async (req: Request, res: Response, next: (e?: Error) => void) => {
+    serveTsFiles = (virtualPath: string, path: string) => async (req: Request, res: Response, next: (e?: Error) => void) => {
         try {
-            const filePath = join(path, req.originalUrl.split('?')[0]);
+            const filePath = join(path, req.originalUrl.split('?')[0]).replace(virtualPath, '').replace(/\/\//g, '/');
             const compiled = await this.tsCompiler.compile(filePath, req.query);
             this.setHeaders(res);
             res.writeHead(200, { "Content-Type": "application/javascript" });
@@ -225,14 +225,13 @@ export class StaticServer {
         }
     }
 
-    async start(path: string) {
+    async start(staticPath: string) {
         await this.stop();
 
         const app = express();
 
-        path = resolve(path);
-        app.use('**/*.ts', this.serveTsFiles(path));
-        app.use(serveStatic(path, { setHeaders: this.setHeaders }));
+        staticPath = resolve(staticPath);
+        app.use('**/*.(ts|js)', this.serveTsFiles('workspace', staticPath));
         app.use(this.errorHandler);
 
         this.server = app.listen(this.options.port);
