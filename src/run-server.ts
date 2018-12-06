@@ -1,3 +1,10 @@
 import { StaticServer } from "./server";
+import * as minimist from 'minimist';
 
-new StaticServer({ port: 4001 }).start('/home/sharon/repos/test');
+const options = minimist(process.argv.slice(2), {
+    default: {
+        prefix: ''
+    }
+});
+
+new StaticServer({ port: 4000 }).start(options.prefix, options.path);

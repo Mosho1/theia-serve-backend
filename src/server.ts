@@ -1,4 +1,3 @@
-import * as serveStatic from 'serve-static';
 import * as http from 'http';
 import * as express from 'express';
 import * as ts from 'typescript';
@@ -225,13 +224,13 @@ export class StaticServer {
         }
     }
 
-    async start(staticPath: string) {
+    async start(virtualPath: string, staticPath: string) {
         await this.stop();
 
         const app = express();
 
         staticPath = resolve(staticPath);
-        app.use('**/*.(ts|js)', this.serveTsFiles('workspace', staticPath));
+        app.use('**/*.(ts|js)', this.serveTsFiles(virtualPath, staticPath));
         app.use(this.errorHandler);
 
         this.server = app.listen(this.options.port);
