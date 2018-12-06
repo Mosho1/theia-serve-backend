@@ -3,7 +3,8 @@ import * as minimist from 'minimist';
 
 const options = minimist(process.argv.slice(2), {
     default: {
-        prefix: ''
+        prefix: '',
+        path: process.cwd()
     }
 });
 
