@@ -1,7 +1,7 @@
 {
   "name": "ts-server",
   "version": "0.0.1",
-  "license": "none",
+  "license": "MIT",
   "files": [
     "src"
   ],
@@ -21,9 +21,6 @@
     "compile": "tsc",
     "build": "yarn run format-code && yarn run compile",
     "start": "node lib/run-server.js"
-  },
-  "theiaPlugin": {
-    "backend": "lib/theia-serve-plugin-backend.js"
   },
   "dependencies": {
     "debug": "^4.1.0",
