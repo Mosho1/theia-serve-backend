@@ -224,13 +224,13 @@ export class StaticServer {
         }
     }
 
-    async start(virtualPath: string, staticPath: string) {
+    async start({ prefix, path }: { prefix: string, path: string }) {
         await this.stop();
 
         const app = express();
 
-        staticPath = resolve(staticPath);
-        app.use('**/*.(ts|js)', this.serveTsFiles(virtualPath, staticPath));
+        path = resolve(path);
+        app.use('**/*.(ts|js)', this.serveTsFiles(prefix, path));
         app.use(this.errorHandler);
 
         this.server = app.listen(this.options.port);
