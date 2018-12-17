@@ -6,6 +6,14 @@ import { join, resolve } from 'path';
 import { TransformerFactory, SourceFile } from 'typescript';
 import * as d from 'debug';
 import { Request, Response } from 'express';
+import * as proxy from 'http-proxy-middleware';
+import * as minimist from 'minimist';
+
+interface Options {
+    apiProxy: string;
+}
+const opts = minimist<Options>(process.argv.slice(2));
+
 const debug = d('ts-server');
 
 class Cache {
@@ -231,6 +239,9 @@ export class StaticServer {
 
         path = resolve(path);
         app.use('**/*.(ts|js)', this.serveTsFiles(prefix, path));
+        if (opts.apiProxy) {
+            app.use('/api', proxy({ target: opts.apiProxy, changeOrigin: true }));
+        }
         app.use(this.errorHandler);
 
         this.server = app.listen(this.options.port);
