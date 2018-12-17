@@ -21,7 +21,8 @@
     "watch": "tsc -watch",
     "compile": "tsc",
     "build": "yarn run format-code && yarn run compile",
-    "start": "node lib/run-server.js"
+    "start": "node lib/run-server.js",
+    "start:dev": "ts-node lib/run-server.ts"
   },
   "dependencies": {
     "debug": "^4.1.0",

@@ -7,12 +7,6 @@ import { TransformerFactory, SourceFile } from 'typescript';
 import * as d from 'debug';
 import { Request, Response } from 'express';
 import * as proxy from 'http-proxy-middleware';
-import * as minimist from 'minimist';
-
-interface Options {
-    apiProxy: string;
-}
-const opts = minimist<Options>(process.argv.slice(2));
 
 const debug = d('ts-server');
 
@@ -232,15 +226,15 @@ export class StaticServer {
         }
     }
 
-    async start({ prefix, path }: { prefix: string, path: string }) {
+    async start({ prefix, path, apiProxy }: { prefix: string, path: string, apiProxy: string }) {
         await this.stop();
 
         const app = express();
 
         path = resolve(path);
         app.use('**/*.(ts|js)', this.serveTsFiles(prefix, path));
-        if (opts.apiProxy) {
-            app.use('/api', proxy({ target: opts.apiProxy, changeOrigin: true }));
+        if (apiProxy) {
+            app.use('/api', proxy({ target: apiProxy, changeOrigin: true }));
         }
         app.use(this.errorHandler);
 
