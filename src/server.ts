@@ -156,14 +156,16 @@ class TSCompiler {
                             pickTheRightExport
                         ];
                     }
-                } else {
-                    return ts.createImportDeclaration(
-                        node.decorators,
-                        node.modifiers,
-                        node.importClause,
-                        ts.createStringLiteral(newSpecifier)
-                    )
                 }
+            } else if (ts.isStringLiteral(specifier) &&
+                ['.ts', '.js'].every(ext => !specifier.text.endsWith(ext))) {
+                const newSpecifier = `${specifier.text}.ts`;
+                return ts.createImportDeclaration(
+                    node.decorators,
+                    node.modifiers,
+                    node.importClause,
+                    ts.createStringLiteral(newSpecifier)
+                );
             }
         }
         return node;
